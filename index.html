@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tibia Knight — Spell Priority</title>
+<style>
+  :root{
+    --bg:#14110c; --panel:#1e1913; --inset:#161209; --line:#39301f;
+    --gold:#d9a441; --text:#ece3cf; --dim:#9d8f72; --faint:#6e6350;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:ui-monospace,'Cascadia Mono','JetBrains Mono',Menlo,Consolas,monospace;
+    font-size:14px; line-height:1.45;
+  }
+  .wrap{ max-width:880px; margin:0 auto; padding:22px 14px 48px; display:flex; flex-direction:column; gap:14px; }
+  .eyebrow{ font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--faint); }
+  h1{ margin:4px 0 0; font-size:24px; color:var(--gold); font-weight:800; letter-spacing:.02em; }
+  .sub{ margin:6px 0 0; font-size:12.5px; color:var(--dim); max-width:640px; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .panel h2{ margin:0; font-size:14px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); font-weight:700; }
+  .panel .psub{ margin:3px 0 12px; font-size:12px; color:var(--faint); }
+  .grouplabel{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin-bottom:8px; }
+  .controls{ display:flex; flex-wrap:wrap; gap:18px 34px; }
+  .col{ display:flex; flex-direction:column; gap:14px; }
+  label.chk{ display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13.5px; }
+  label.chk.off{ opacity:.4; cursor:not-allowed; }
+  label.chk input{ accent-color:var(--gold); width:15px; height:15px; margin:0; }
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .seg button{
+    padding:6px 12px; font-size:13px; cursor:pointer; border:none; background:transparent;
+    color:var(--dim); font-family:inherit; border-left:1px solid var(--line);
+  }
+  .seg button:first-child{ border-left:none; }
+  .seg button.on{ background:var(--gold); color:#1a1408; font-weight:700; }
+  input[type=number], input[type=text]{
+    background:var(--inset); border:1px solid var(--line); color:var(--text);
+    border-radius:5px; padding:5px 7px; font-family:inherit; font-size:13px; width:100%;
+  }
+  input[type=number]{ text-align:right; }
+  .lvlbox{ width:86px; font-size:16px; font-weight:700; color:var(--gold); }
+  input[type=range]{ -webkit-appearance:none; appearance:none; flex:1; height:6px; border-radius:3px; background:var(--inset); outline:none; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:var(--gold); border:2px solid #141008; cursor:pointer; }
+  input[type=range]::-moz-range-thumb{ width:18px; height:18px; border-radius:50%; background:var(--gold); border:2px solid #141008; cursor:pointer; }
+  .sliderrow{ display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .bign{ font-size:26px; font-weight:800; color:var(--gold); min-width:44px; text-align:right; font-variant-numeric:tabular-nums; }
+  .rank{ display:flex; flex-direction:column; gap:10px; }
+  .rrow .top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px; gap:8px; }
+  .rname{ font-size:13.5px; min-width:0; }
+  .rname .idx{ color:var(--faint); font-variant-numeric:tabular-nums; margin-right:8px; }
+  .rname .meta{ color:var(--faint); font-size:12px; }
+  .rval{ font-variant-numeric:tabular-nums; font-size:13.5px; white-space:nowrap; }
+  .rval .delta{ color:var(--faint); font-size:12px; }
+  .bar{ height:10px; background:var(--inset); border-radius:3px; overflow:hidden; }
+  .bar > div{ height:100%; border-radius:3px; transition:width .2s; }
+  .locked{ margin-top:12px; font-size:12px; color:var(--faint); }
+  .chartbox svg{ width:100%; height:auto; display:block; }
+  .legend{ display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:8px; font-size:11.5px; color:var(--dim); }
+  .legend b{ font-weight:800; }
+  .stripwrap{ overflow-x:auto; padding-bottom:4px; }
+  table.strip{ border-collapse:separate; border-spacing:3px; }
+  table.strip td{ font-size:11px; }
+  table.strip .hdr{ color:var(--dim); text-align:center; font-variant-numeric:tabular-nums; min-width:34px; }
+  table.strip .rowlbl{ font-size:10px; color:var(--faint); padding-right:6px; white-space:nowrap; }
+  table.strip .cell{ color:#141008; font-weight:800; text-align:center; border-radius:4px; padding:7px 0; min-width:34px; cursor:default; }
+  details.editor > summary{ cursor:pointer; color:var(--gold); font-size:13px; font-weight:700; letter-spacing:.06em; }
+  table.edit{ border-collapse:collapse; width:100%; margin-top:12px; }
+  table.edit th{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); text-align:left; padding:4px 6px; font-weight:600; }
+  table.edit td{ padding:3px 4px; }
+  table.edit input{ min-width:52px; }
+  table.edit input.wide{ min-width:130px; }
+  .swatch{ display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-1px; }
+  button.btn{
+    background:transparent; border:1px solid var(--line); color:var(--dim); border-radius:6px;
+    padding:6px 12px; font-family:inherit; font-size:12.5px; cursor:pointer;
+  }
+  button.btn:hover{ color:var(--text); border-color:var(--faint); }
+  button.btn.danger:hover{ color:#e0564f; border-color:#e0564f; }
+  button.del{ background:none; border:none; color:var(--faint); cursor:pointer; font-size:14px; padding:2px 6px; }
+  button.del:hover{ color:#e0564f; }
+  .editrow-actions{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .stagegrid{ display:grid; grid-template-columns:auto repeat(3, minmax(70px,110px)); gap:6px 10px; margin-top:14px; align-items:center; font-size:12px; }
+  .stagegrid .sl{ color:var(--faint); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; }
+  footer{ font-size:11px; color:var(--faint); padding:0 2px; }
+  .editscroll{ overflow-x:auto; }
+  button:focus-visible, input:focus-visible, summary:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Tibia · Knight · 2026 rebalance</div>
+    <h1>Spell Priority</h1>
+    <p class="sub">Per-cast comparison of offensive spells. Leech view weights damage at 100% on the primary target and 10% on each additional target. Everything below is editable — open “Edit spells &amp; values”.</p>
+  </header>
+
+  <section class="panel">
+    <h2>Setup</h2>
+    <p class="psub">Spells above your character level are hidden from all views.</p>
+    <div id="controls"></div>
+  </section>
+
+  <section class="panel">
+    <details class="editor" id="editor-details">
+      <summary>Edit spells &amp; values</summary>
+      <div id="editor"></div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2 id="ranktitle">Priority</h2>
+    <p class="psub" id="ranksub"></p>
+    <div class="sliderrow">
+      <input type="range" id="nslider" min="1" max="15" value="4" aria-label="Number of targets">
+      <div class="bign" id="nval">4</div>
+    </div>
+    <div class="rank" id="ranklist"></div>
+    <div class="locked" id="lockedlist"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Power by pull size</h2>
+    <p class="psub">Lines flatten where a spell hits its target cap.</p>
+    <div class="chartbox" id="chart"></div>
+    <div style="margin-top:8px">
+      <label class="chk"><input type="checkbox" id="extendchk"> Extend axis to the largest target cap</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Rotation strip</h2>
+    <p class="psub">Best three spells at each pull size — read it like a hotbar.</p>
+    <div class="stripwrap" id="strip"></div>
+  </section>
+
+  <footer>
+    Assumes below-30% targets are among those hit, and (for leech) that your primary target is one of them when possible.
+    Shield-based spells (Shield Bash, Shield Slam) are scaled by (shield Def &times; skill) &divide; (weapon Atk &times; melee skill) —
+    an estimate, since CipSoft hasn't published the exact formula; use “Measured &times;” to calibrate against real in-game hits.
+    Their 50% reduction of the target's next auto attack isn't modeled. Your edits are saved in this browser.
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ================================================================
+   DEFAULT GAME DATA — the in-app editor overrides these (saved in
+   your browser). Hand-edit here to change what ships with the file.
+   wheelBoost: fractional base-power increase from a Wheel conviction
+   wheelCap:   raised max-target count from a second conviction
+   minLevel:   character level required to cast (verify in-game!)
+   ================================================================ */
+const DEFAULT_SPELLS = [
+  { id:"et", name:"Executioner's Throw", words:"exori amp kor", abbr:"ET", color:"#e0564f",
+    base:60, minLevel:51, stages:[
+      { cap:3, bonus:1.00 },   // revelation stage 1: +100% vs <30% HP
+      { cap:4, bonus:1.25 },   // stage 2: +125%
+      { cap:5, bonus:1.50 },   // stage 3: +150%
+    ]},
+  { id:"an", name:"Annihilation",   words:"exori gran ico", abbr:"AN", color:"#b07fe8", base:125, cap:1,  minLevel:110 },
+  { id:"fb", name:"Fierce Berserk", words:"exori gran",     abbr:"FB", color:"#f2933a", base:92,  cap:8,  minLevel:90,  wheelBoost:0.10 },
+  { id:"fs", name:"Front Sweep",    words:"exori min",      abbr:"FS", color:"#4fc8b8", base:80,  cap:3,  minLevel:70,  wheelBoost:0.40, wheelCap:5 },
+  { id:"bs", name:"Berserk",        words:"exori",          abbr:"BS", color:"#7fbf5a", base:44,  cap:8,  minLevel:35 },
+  { id:"gs", name:"Groundshaker",   words:"exori mas",      abbr:"GS", color:"#6fa8dc", base:33,  cap:36, minLevel:33,  wheelBoost:0.125 },
+  // Shield-based spells (2026): damage uses shield Def instead of weapon Atk. Requires a shield.
+  { id:"sb", name:"Shield Bash",    words:"exori ico scu",  abbr:"SB", color:"#e88bc4", base:30,  cap:1,  minLevel:55, scaling:"shield" },
+  { id:"ss", name:"Shield Slam",    words:"exori scu",      abbr:"SS", color:"#c9d16b", base:90,  cap:8,  minLevel:52, scaling:"shield" },
+];
+const LEECH_SECONDARY = 0.10;
+const PALETTE = ["#e0564f","#b07fe8","#f2933a","#4fc8b8","#7fbf5a","#6fa8dc","#e88bc4","#c9d16b","#8fd0f0","#d98d5f","#a4e0a0","#e0c060"];
+const STORE_KEY = "tibia-knight-priority-v2";
+/* ================================================================ */
+
+const deep = (o) => JSON.parse(JSON.stringify(o));
+const esc = (s) => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const fmt = (v) => String(Math.round(v*10)/10);
+
+let state = {
+  charLevel: 150, stage: 2, below: 1, metric: "total", n: 4, extend: false,
+  usingShield: true,
+  gear: { mode: "gear", weaponAtk: 52, meleeSkill: 120, shieldDef: 38, shieldSkill: 120, manual: 1 },
+  wheel: {}, spells: deep(DEFAULT_SPELLS),
+};
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY));
+  if (saved && Array.isArray(saved.spells) && saved.spells.length) state = Object.assign(state, saved);
+} catch (e) { /* private browsing or blocked storage — run without persistence */ }
+
+function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){} }
+
+/* ---------------- model ---------------- */
+function shieldMult(){
+  const g = state.gear;
+  if (g.mode === "manual") return Math.max(0, +g.manual || 0);
+  const melee = (+g.weaponAtk || 1) * (+g.meleeSkill || 1);
+  const shield = (+g.shieldDef || 0) * (+g.shieldSkill || 0);
+  return melee > 0 ? shield / melee : 0;
+}
+function castable(s){
+  if ((+s.minLevel||0) > state.charLevel) return false;
+  if (s.scaling === "shield" && !state.usingShield) return false;
+  return true;
+}
+function activeSpells(){ return state.spells.filter(castable); }
+function lockedSpells(){ return state.spells.filter(s => !castable(s)); }
+function maxCap(){
+  return Math.max(1, ...activeSpells().map(s => s.stages ? Math.max(...s.stages.map(x=>+x.cap||1)) : (+s.cap||1)));
+}
+function chartMaxN(){ return state.extend ? Math.max(15, maxCap()) : 15; }
+
+function computeAll(n){
+  return activeSpells().map(s => {
+    const w = state.wheel[s.id] || {};
+    let base = +s.base || 0;
+    if (s.scaling === "shield") base *= shieldMult();
+    if (s.wheelBoost && w.power) base *= 1 + (+s.wheelBoost);
+    if (s.stages){
+      const st = s.stages[Math.min(state.stage, s.stages.length) - 1];
+      const hits = Math.min(n, +st.cap || 1);
+      const e = Math.min(state.below, hits);
+      const total = base*(hits - e) + base*(1 + (+st.bonus))*e;
+      const dFirst = e >= 1 ? base*(1 + (+st.bonus)) : base;
+      return { ...s, hits, total, dFirst, note: e>0 ? e + "\u00d7 execute" : null,
+               leech: dFirst + LEECH_SECONDARY*(total - dFirst) };
+    }
+    let cap = +s.cap || 1;
+    if (s.wheelCap && w.cap && (!s.wheelBoost || w.power)) cap = +s.wheelCap;
+    const hits = Math.min(n, cap);
+    const total = base * hits;
+    return { ...s, hits, total, dFirst: base, note: null,
+             leech: base + LEECH_SECONDARY*(total - base) };
+  });
+}
+
+/* ---------------- controls ---------------- */
+function segHtml(key, options, labels){
+  return '<div class="seg">' + options.map((o,i) =>
+    '<button data-action="seg" data-key="'+key+'" data-val="'+o+'" class="'+(String(state[key])===String(o)?"on":"")+'">'+esc(labels?labels[i]:o)+'</button>'
+  ).join("") + "</div>";
+}
+
+function refreshControls(){
+  const wheelSpells = state.spells.filter(s => s.wheelBoost || s.wheelCap);
+  const et = state.spells.find(s => s.stages);
+  let wheelHtml = wheelSpells.map(s => {
+    const w = state.wheel[s.id] || {};
+    let h = "";
+    if (s.wheelBoost) h += '<label class="chk"><input type="checkbox" data-action="wheel" data-id="'+s.id+'" data-kind="power" '+(w.power?"checked":"")+'> '+esc(s.name)+' +'+(Math.round(s.wheelBoost*1000)/10)+'% power</label>';
+    if (s.wheelCap){
+      const dep = s.wheelBoost && !w.power;
+      h += '<label class="chk'+(dep?" off":"")+'"><input type="checkbox" data-action="wheel" data-id="'+s.id+'" data-kind="cap" '+(w.cap?"checked":"")+' '+(dep?"disabled":"")+'> '+esc(s.name)+' \u2192 '+(+s.wheelCap)+' targets</label>';
+    }
+    return h;
+  }).join("");
+  if (!wheelHtml) wheelHtml = '<span style="font-size:12px;color:var(--faint)">No spells have Wheel convictions defined.</span>';
+
+  document.getElementById("controls").innerHTML =
+    '<div class="controls">' +
+      '<div class="col">' +
+        '<div><div class="grouplabel">Character level</div>' +
+          '<input type="number" class="lvlbox" min="1" max="3000" step="1" value="'+state.charLevel+'" data-action="charlevel" aria-label="Character level"></div>' +
+        '<div><div class="grouplabel">Wheel of Destiny convictions</div>' +
+          '<div style="display:flex;flex-direction:column;gap:7px">'+wheelHtml+'</div></div>' +
+      '</div>' +
+      '<div class="col">' +
+        (et ? '<div><div class="grouplabel">'+esc(et.name)+' revelation</div>' + segHtml("stage",[1,2,3],["Stage 1","Stage 2","Stage 3"]) + '</div>' : "") +
+        '<div><div class="grouplabel">Targets below 30% HP</div>' + segHtml("below",[0,1,2,3,4,5]) + '</div>' +
+        '<div><div class="grouplabel">Metric</div>' + segHtml("metric",["total","leech"],["Total damage","Leech value"]) + '</div>' +
+      '</div>' +
+      '<div class="col">' +
+        '<div><div class="grouplabel">Shield spells</div>' +
+          '<label class="chk" style="margin-bottom:8px"><input type="checkbox" data-action="usingshield" '+(state.usingShield?"checked":"")+'> Wielding a shield</label>' +
+          (state.usingShield ? (
+            '<div style="margin-bottom:8px">' + gearSegHtml() + '</div>' +
+            (state.gear.mode === "gear" ? gearInputsHtml() : manualInputHtml()) +
+            '<div style="font-size:12px;color:var(--dim);margin-top:8px">Shield spells scale at <b style="color:var(--gold)">\u00d7'+ (Math.round(shieldMult()*100)/100) +'</b> of listed base power</div>'
+          ) : '<div style="font-size:12px;color:var(--faint)">Shield-based spells hidden (two-handed setup).</div>') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function gearSegHtml(){
+  return '<div class="seg">' +
+    '<button data-action="gearmode" data-val="gear" class="'+(state.gear.mode==="gear"?"on":"")+'">Estimate from gear</button>' +
+    '<button data-action="gearmode" data-val="manual" class="'+(state.gear.mode==="manual"?"on":"")+'">Measured \u00d7</button>' +
+  '</div>';
+}
+function gearInputsHtml(){
+  const g = state.gear;
+  const inp = (f, lbl, v) =>
+    '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px">'+lbl+
+    '<input type="number" step="any" min="0" style="width:76px" value="'+v+'" data-action="gear" data-field="'+f+'"></label>';
+  return '<div style="display:flex;flex-direction:column;gap:6px;max-width:280px">' +
+    inp("weaponAtk","Weapon attack",+g.weaponAtk) +
+    inp("meleeSkill","Melee skill",+g.meleeSkill) +
+    inp("shieldDef","Shield defense",+g.shieldDef) +
+    inp("shieldSkill","Skill for shield spells",+g.shieldSkill) +
+  '</div>';
+}
+function manualInputHtml(){
+  return '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;max-width:280px">Shield \u00f7 melee damage ratio' +
+    '<input type="number" step="any" min="0" style="width:76px" value="'+(+state.gear.manual)+'" data-action="gear" data-field="manual"></label>' +
+    '<div style="font-size:11px;color:var(--faint);margin-top:6px;max-width:280px">Measure in-game: average Shield Bash hit \u00f7 average hit of a melee spell with the same base power ratio \u2014 or just tune until the numbers match what you see.</div>';
+}
+
+/* ---------------- ranked list ---------------- */
+function refreshRank(){
+  const n = state.n;
+  document.getElementById("ranktitle").textContent = "Priority at " + n + " target" + (n>1?"s":"");
+  document.getElementById("ranksub").textContent = "Ranked by " + (state.metric==="total"?"total damage":"leech-weighted damage") + " per cast. Drag the slider to your pull size.";
+  document.getElementById("nval").textContent = n;
+
+  const list = computeAll(n).sort((a,b) => b[state.metric]-a[state.metric]);
+  const max = list.length ? list[0][state.metric] || 1 : 1;
+  document.getElementById("ranklist").innerHTML = list.map((s,i) => {
+    const v = s[state.metric], pct = (v/max)*100;
+    return '<div class="rrow"><div class="top">' +
+      '<span class="rname"><span class="idx">'+(i+1)+'</span><strong style="color:'+esc(s.color)+'">'+esc(s.name)+'</strong>' +
+      '<span class="meta"> \u00b7 '+esc(s.words||"")+' \u00b7 hits '+s.hits+(s.note?' \u00b7 '+esc(s.note):"")+'</span></span>' +
+      '<span class="rval">'+fmt(v)+(i>0?' <span class="delta">(\u2212'+fmt(100-pct)+'%)</span>':"")+'</span></div>' +
+      '<div class="bar"><div style="width:'+pct+'%;background:'+esc(s.color)+'"></div></div></div>';
+  }).join("") || '<span style="color:var(--faint);font-size:13px">No spells castable at this level \u2014 raise your character level or edit spell requirements.</span>';
+
+  const locked = lockedSpells();
+  document.getElementById("lockedlist").innerHTML = locked.length
+    ? "Hidden: " + locked.map(s => esc(s.name) + ((+s.minLevel||0) > state.charLevel ? " (lvl "+(+s.minLevel)+")" : " (needs shield)")).join(" \u00b7 ")
+    : "";
+}
+
+/* ---------------- line chart (hand-drawn SVG) ---------------- */
+function refreshChart(){
+  const maxN = chartMaxN();
+  const spells = activeSpells();
+  const series = spells.map(s => ({ meta:s, pts:[] }));
+  let yMax = 0;
+  for (let n=1; n<=maxN; n++){
+    const row = computeAll(n);
+    row.forEach((r,i) => { series[i].pts.push(r[state.metric]); if (r[state.metric] > yMax) yMax = r[state.metric]; });
+  }
+  if (!yMax) yMax = 1;
+  const p = Math.pow(10, Math.floor(Math.log10(yMax)));
+  const niceMax = Math.ceil(yMax / (p/2)) * (p/2);
+
+  const W=720, H=300, mL=46, mR=12, mT=10, mB=26;
+  const iw = W-mL-mR, ih = H-mT-mB;
+  const X = n => mL + (maxN===1 ? 0 : (n-1)/(maxN-1)*iw);
+  const Y = v => mT + ih - (v/niceMax)*ih;
+
+  let g = "";
+  for (let i=0;i<=4;i++){
+    const v = niceMax*i/4, y = Y(v);
+    g += '<line x1="'+mL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="var(--line)" stroke-dasharray="2 4"/>';
+    g += '<text x="'+(mL-6)+'" y="'+(y+3.5)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+fmt(v)+'</text>';
+  }
+  const step = maxN>18 ? 4 : (maxN>10 ? 2 : 1);
+  for (let n=1;n<=maxN;n++){
+    if ((n-1)%step!==0 && n!==maxN) continue;
+    g += '<text x="'+X(n)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="var(--dim)">'+n+'</text>';
+  }
+  const curX = X(Math.min(state.n, maxN));
+  g += '<line x1="'+curX+'" y1="'+mT+'" x2="'+curX+'" y2="'+(mT+ih)+'" stroke="var(--gold)" stroke-opacity="0.35" stroke-width="1.5"/>';
+  series.forEach(s => {
+    const d = s.pts.map((v,i)=>(i===0?"M":"L")+X(i+1).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
+    g += '<path d="'+d+'" fill="none" stroke="'+esc(s.meta.color)+'" stroke-width="2" stroke-opacity="0.95"/>';
+  });
+  document.getElementById("chart").innerHTML =
+    '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Spell power by number of targets">'+g+'</svg>';
+  document.getElementById("legend").innerHTML = spells.map(s =>
+    '<span><b style="color:'+esc(s.color)+'">'+esc(s.abbr)+'</b> '+esc(s.name)+'</span>').join("");
+  document.getElementById("extendchk").checked = state.extend;
+}
+
+/* ---------------- rotation strip ---------------- */
+function refreshStrip(){
+  const maxN = chartMaxN();
+  const ns = [];
+  for (let n=1;n<=Math.min(maxN,15);n++) ns.push(n);
+  if (maxN>15){
+    [Math.round(maxN*0.55), Math.round(maxN*0.78), maxN].forEach(v => { if (v>15 && !ns.includes(v)) ns.push(v); });
+  }
+  const cols = ns.map(n => ({ n, top: computeAll(n).sort((a,b)=>b[state.metric]-a[state.metric]).slice(0,3) }));
+  let html = '<table class="strip"><tr><td class="rowlbl">targets \u2192</td>' +
+    cols.map(c=>'<td class="hdr">'+c.n+'</td>').join("") + '</tr>';
+  const ops = [1, 0.62, 0.38], lbl = ["1st","2nd","3rd"];
+  for (let r=0;r<3;r++){
+    html += '<tr><td class="rowlbl">'+lbl[r]+'</td>' + cols.map(c => {
+      const s = c.top[r];
+      if (!s) return '<td></td>';
+      return '<td class="cell" style="background:'+esc(s.color)+';opacity:'+ops[r]+'" title="'+esc(s.name)+': '+fmt(s[state.metric])+'">'+esc(s.abbr)+'</td>';
+    }).join("") + '</tr>';
+  }
+  document.getElementById("strip").innerHTML = html + "</table>";
+}
+
+/* ---------------- editor ---------------- */
+function refreshEditor(){
+  const rows = state.spells.map(s => {
+    const isEt = !!s.stages;
+    return '<tr>' +
+      '<td><span class="swatch" style="background:'+esc(s.color)+'"></span></td>' +
+      '<td><input class="wide" type="text" value="'+esc(s.name)+'" data-action="edit" data-id="'+s.id+'" data-field="name"></td>' +
+      '<td><input type="text" style="min-width:44px" maxlength="3" value="'+esc(s.abbr)+'" data-action="edit" data-id="'+s.id+'" data-field="abbr"></td>' +
+      '<td><input type="number" step="any" value="'+(+s.base)+'" data-action="edit" data-id="'+s.id+'" data-field="base"></td>' +
+      '<td>'+(isEt ? '<span style="color:var(--faint);font-size:11px">per stage \u2193</span>'
+                   : '<input type="number" step="1" min="1" value="'+(+s.cap)+'" data-action="edit" data-id="'+s.id+'" data-field="cap">')+'</td>' +
+      '<td><input type="number" step="1" min="1" value="'+(+s.minLevel||1)+'" data-action="edit" data-id="'+s.id+'" data-field="minLevel"></td>' +
+      '<td>'+(isEt ? '' : '<input type="number" step="any" min="0" value="'+(s.wheelBoost? Math.round(s.wheelBoost*1000)/10 : 0)+'" data-action="edit" data-id="'+s.id+'" data-field="wheelBoostPct">')+'</td>' +
+      '<td>'+(isEt ? '' : '<input type="number" step="1" min="0" value="'+(s.wheelCap? +s.wheelCap : 0)+'" data-action="edit" data-id="'+s.id+'" data-field="wheelCap">')+'</td>' +
+      '<td style="text-align:center"><input type="checkbox" data-action="edit" data-id="'+s.id+'" data-field="shieldScaling" '+(s.scaling==="shield"?"checked":"")+' style="accent-color:var(--gold)"></td>' +
+      '<td><button class="del" data-action="del" data-id="'+s.id+'" title="Remove spell" aria-label="Remove '+esc(s.name)+'">\u2715</button></td>' +
+    '</tr>';
+  }).join("");
+
+  const et = state.spells.find(s => s.stages);
+  let etHtml = "";
+  if (et){
+    etHtml = '<div class="grouplabel" style="margin-top:16px">'+esc(et.name)+' \u2014 revelation stages</div>' +
+      '<div class="stagegrid">' +
+      '<span class="sl"></span><span class="sl">Stage 1</span><span class="sl">Stage 2</span><span class="sl">Stage 3</span>' +
+      '<span class="sl">Max targets</span>' + et.stages.map((st,i)=>'<input type="number" step="1" min="1" value="'+(+st.cap)+'" data-action="edit-stage" data-stage="'+i+'" data-field="cap">').join("") +
+      '<span class="sl">Bonus dmg % (vs &lt;30% HP)</span>' + et.stages.map((st,i)=>'<input type="number" step="any" min="0" value="'+Math.round(st.bonus*100)+'" data-action="edit-stage" data-stage="'+i+'" data-field="bonusPct">').join("") +
+      '</div>';
+  }
+
+  document.getElementById("editor").innerHTML =
+    '<div class="editscroll"><table class="edit"><tr>' +
+    '<th></th><th>Spell</th><th>Abbr</th><th>Base power</th><th>Max targets</th><th>Min level</th><th>Wheel +%</th><th>Wheel targets<br>(0 = none)</th><th>Shield-<br>based</th><th></th>' +
+    '</tr>'+rows+'</table></div>' + etHtml +
+    '<div class="editrow-actions">' +
+      '<button class="btn" data-action="add">+ Add spell</button>' +
+      '<button class="btn danger" data-action="reset">Restore defaults</button>' +
+    '</div>' +
+    '<p style="font-size:11px;color:var(--faint);margin:10px 0 0">Changes apply instantly and are saved in this browser. Base powers here are relative units from the spell formulas \u2014 only their ratios matter for priority.</p>';
+}
+
+function refreshViews(){ refreshRank(); refreshChart(); refreshStrip(); }
+function refreshAll(){ refreshControls(); refreshEditor(); syncSlider(); refreshViews(); save(); }
+function syncSlider(){
+  const sl = document.getElementById("nslider");
+  sl.max = chartMaxN();
+  if (state.n > +sl.max){ state.n = +sl.max; }
+  sl.value = state.n;
+}
+
+/* ---------------- events (delegated) ---------------- */
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest("[data-action]");
+  if (!t) return;
+  const a = t.dataset.action;
+  if (a === "seg"){
+    const key = t.dataset.key;
+    state[key] = (key === "metric") ? t.dataset.val : +t.dataset.val;
+    refreshControls(); refreshViews(); save();
+  } else if (a === "gearmode"){
+    state.gear.mode = t.dataset.val;
+    refreshControls(); refreshViews(); save();
+  } else if (a === "del"){
+    const s = state.spells.find(x => x.id === t.dataset.id);
+    if (s && confirm('Remove "'+s.name+'" from the tool?')){
+      state.spells = state.spells.filter(x => x.id !== t.dataset.id);
+      delete state.wheel[t.dataset.id];
+      refreshAll();
+    }
+  } else if (a === "add"){
+    const id = "s" + Date.now().toString(36);
+    state.spells.push({ id, name:"New Spell", words:"", abbr:"NS", color: PALETTE[state.spells.length % PALETTE.length],
+                        base:50, cap:1, minLevel:1 });
+    refreshAll();
+    const details = document.getElementById("editor-details"); details.open = true;
+  } else if (a === "reset"){
+    if (confirm("Restore the shipped spell list and values? Your edits will be lost.")){
+      state.spells = deep(DEFAULT_SPELLS); state.wheel = {};
+      refreshAll();
+    }
+  }
+});
+
+document.addEventListener("change", (ev) => {
+  const t = ev.target.closest("[data-action]");
+  if (!t) return;
+  const a = t.dataset.action;
+  if (a === "wheel"){
+    const id = t.dataset.id, kind = t.dataset.kind;
+    state.wheel[id] = state.wheel[id] || {};
+    state.wheel[id][kind] = t.checked;
+    if (kind === "power" && !t.checked) state.wheel[id].cap = false;
+    refreshControls(); refreshViews(); save();
+  } else if (a === "charlevel"){
+    state.charLevel = Math.max(1, Math.round(+t.value || 1));
+    syncSlider(); refreshViews(); refreshRank(); save();
+  } else if (a === "usingshield"){
+    state.usingShield = t.checked;
+    refreshControls(); syncSlider(); refreshViews(); save();
+  } else if (a === "gear"){
+    state.gear[t.dataset.field] = Math.max(0, +t.value || 0);
+    refreshControls(); refreshViews(); save();
+  } else if (a === "extend" || t.id === "extendchk"){
+    state.extend = t.checked;
+    syncSlider(); refreshViews(); save();
+  } else if (a === "edit"){
+    const s = state.spells.find(x => x.id === t.dataset.id);
+    if (!s) return;
+    const f = t.dataset.field;
+    if (f === "name" || f === "abbr"){ s[f] = t.value.trim() || s[f]; }
+    else if (f === "shieldScaling"){ if (t.checked) s.scaling = "shield"; else delete s.scaling; }
+    else if (f === "wheelBoostPct"){ const v = +t.value || 0; if (v>0) s.wheelBoost = v/100; else delete s.wheelBoost; }
+    else if (f === "wheelCap"){ const v = Math.round(+t.value||0); if (v>0) s.wheelCap = v; else delete s.wheelCap; }
+    else { s[f] = Math.max(f==="base"?0:1, +t.value || 0); }
+    refreshControls(); refreshEditor(); syncSlider(); refreshViews(); save();
+  } else if (a === "edit-stage"){
+    const et = state.spells.find(x => x.stages); if (!et) return;
+    const st = et.stages[+t.dataset.stage], f = t.dataset.field;
+    if (f === "cap") st.cap = Math.max(1, Math.round(+t.value||1));
+    else st.bonus = Math.max(0, (+t.value||0)/100);
+    refreshEditor(); syncSlider(); refreshViews(); save();
+  }
+});
+
+document.getElementById("nslider").addEventListener("input", (ev) => {
+  state.n = +ev.target.value;
+  refreshRank(); refreshChart(); save();
+});
+document.getElementById("extendchk").addEventListener("change", (ev) => {
+  state.extend = ev.target.checked;
+  syncSlider(); refreshViews(); save();
+});
+
+/* ---------------- boot ---------------- */
+refreshControls(); refreshEditor(); syncSlider(); refreshViews();
+</script>
+</body>
+</html>
