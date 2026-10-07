@@ -156,7 +156,7 @@
    ================================================================ */
 const DEFAULT_SPELLS = [
   { id:"et", name:"Executioner's Throw", words:"exori amp kor", abbr:"ET", color:"#e0564f",
-    base:60, minLevel:51, stages:[
+    base:60, minLevel:300, stages:[
       { cap:3, bonus:1.00 },   // revelation stage 1: +100% vs <30% HP
       { cap:4, bonus:1.25 },   // stage 2: +125%
       { cap:5, bonus:1.50 },   // stage 3: +150%
@@ -165,14 +165,14 @@ const DEFAULT_SPELLS = [
   { id:"fb", name:"Fierce Berserk", words:"exori gran",     abbr:"FB", color:"#f2933a", base:92,  cap:8,  minLevel:90,  wheelBoost:0.10 },
   { id:"fs", name:"Front Sweep",    words:"exori min",      abbr:"FS", color:"#4fc8b8", base:80,  cap:3,  minLevel:70,  wheelBoost:0.40, wheelCap:5 },
   { id:"bs", name:"Berserk",        words:"exori",          abbr:"BS", color:"#7fbf5a", base:44,  cap:8,  minLevel:35 },
-  { id:"gs", name:"Groundshaker",   words:"exori mas",      abbr:"GS", color:"#6fa8dc", base:33,  cap:36, minLevel:33,  wheelBoost:0.125 },
+  { id:"gs", name:"Groundshaker",   words:"exori mas",      abbr:"GS", color:"#6fa8dc", base:32,  cap:36, minLevel:33,  wheelBoost:0.125 },
   // Shield-based spells (2026): damage uses shield Def instead of weapon Atk. Requires a shield.
-  { id:"sb", name:"Shield Bash",    words:"exori ico scu",  abbr:"SB", color:"#e88bc4", base:30,  cap:1,  minLevel:55, scaling:"shield" },
-  { id:"ss", name:"Shield Slam",    words:"exori scu",      abbr:"SS", color:"#c9d16b", base:90,  cap:8,  minLevel:52, scaling:"shield" },
+  { id:"sb", name:"Shield Bash",    words:"exori ico scu",  abbr:"SB", color:"#e88bc4", base:55,  cap:1,  minLevel:18, scaling:"shield" },
+  { id:"ss", name:"Shield Slam",    words:"exori scu",      abbr:"SS", color:"#c9d16b", base:52,  cap:8,  minLevel:30, scaling:"shield" },
 ];
 const LEECH_SECONDARY = 0.10;
 const PALETTE = ["#e0564f","#b07fe8","#f2933a","#4fc8b8","#7fbf5a","#6fa8dc","#e88bc4","#c9d16b","#8fd0f0","#d98d5f","#a4e0a0","#e0c060"];
-const STORE_KEY = "tibia-knight-priority-v2";
+const STORE_KEY = "tibia-knight-priority-v3";
 /* ================================================================ */
 
 const deep = (o) => JSON.parse(JSON.stringify(o));
@@ -203,6 +203,7 @@ function shieldMult(){
 function castable(s){
   if ((+s.minLevel||0) > state.charLevel) return false;
   if (s.scaling === "shield" && !state.usingShield) return false;
+  if (s.stages && state.stage < 1) return false; // revelation perk not unlocked
   return true;
 }
 function activeSpells(){ return state.spells.filter(castable); }
@@ -267,7 +268,7 @@ function refreshControls(){
           '<div style="display:flex;flex-direction:column;gap:7px">'+wheelHtml+'</div></div>' +
       '</div>' +
       '<div class="col">' +
-        (et ? '<div><div class="grouplabel">'+esc(et.name)+' revelation</div>' + segHtml("stage",[1,2,3],["Stage 1","Stage 2","Stage 3"]) + '</div>' : "") +
+        (et ? '<div><div class="grouplabel">'+esc(et.name)+' revelation</div>' + segHtml("stage",[0,1,2,3],["None","Stage 1","Stage 2","Stage 3"]) + '</div>' : "") +
         '<div><div class="grouplabel">Targets below 30% HP</div>' + segHtml("below",[0,1,2,3,4,5]) + '</div>' +
         '<div><div class="grouplabel">Metric</div>' + segHtml("metric",["total","leech"],["Total damage","Leech value"]) + '</div>' +
       '</div>' +
@@ -328,7 +329,7 @@ function refreshRank(){
 
   const locked = lockedSpells();
   document.getElementById("lockedlist").innerHTML = locked.length
-    ? "Hidden: " + locked.map(s => esc(s.name) + ((+s.minLevel||0) > state.charLevel ? " (lvl "+(+s.minLevel)+")" : " (needs shield)")).join(" \u00b7 ")
+    ? "Hidden: " + locked.map(s => esc(s.name) + ((+s.minLevel||0) > state.charLevel ? " (lvl "+(+s.minLevel)+")" : (s.stages && state.stage < 1 ? " (perk not unlocked)" : " (needs shield)"))).join(" \u00b7 ")
     : "";
 }
 
