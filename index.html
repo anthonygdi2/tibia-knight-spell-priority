@@ -65,7 +65,12 @@
   table.strip .hdr{ color:var(--dim); text-align:center; font-variant-numeric:tabular-nums; min-width:34px; }
   table.strip .rowlbl{ font-size:10px; color:var(--faint); padding-right:6px; white-space:nowrap; }
   table.strip .cell{ color:#141008; font-weight:800; text-align:center; border-radius:4px; padding:7px 0; min-width:34px; cursor:default; }
-  details.editor > summary{ cursor:pointer; color:var(--gold); font-size:13px; font-weight:700; letter-spacing:.06em; }
+  details.panel > summary{ cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px; }
+  details.panel > summary::-webkit-details-marker{ display:none; }
+  details.panel > summary::before{ content:"\25B8"; color:var(--gold); font-size:13px; transition:transform .15s; }
+  details.panel[open] > summary::before{ transform:rotate(90deg); }
+  details.panel > summary h2{ margin:0; }
+  details.panel[open] > summary{ margin-bottom:4px; }
   table.edit{ border-collapse:collapse; width:100%; margin-top:12px; }
   table.edit th{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); text-align:left; padding:4px 6px; font-weight:600; }
   table.edit td{ padding:3px 4px; }
@@ -104,17 +109,44 @@
   <header>
     <div class="eyebrow">Tibia · Knight · 2026 rebalance</div>
     <h1>Spell Priority</h1>
-    <p class="sub">Per-cast comparison of offensive spells. Leech view weights damage at 100% on the primary target and 10% on each additional target. Everything below is editable — open “Edit spells &amp; values”.</p>
+    <p class="sub">Per-cast comparison of offensive spells. Leech view weights damage at 100% on the primary target and 10% on each additional target. Everything is editable — open “Edit spells &amp; values” at the bottom. Click any section title to collapse it.</p>
   </header>
 
-  <section class="panel">
-    <h2>Setup</h2>
+  <details class="panel" data-key="setup" open>
+    <summary><h2>Setup</h2></summary>
     <p class="psub">Spells above your character level are hidden from all views.</p>
     <div id="controls"></div>
-  </section>
+  </details>
 
-  <section class="panel">
-    <h2>Greater Gems &mdash; base damage</h2>
+  <details class="panel" data-key="rank" open>
+    <summary><h2 id="ranktitle">Priority</h2></summary>
+    <p class="psub" id="ranksub"></p>
+    <div class="sliderrow">
+      <input type="range" id="nslider" min="1" max="15" value="4" aria-label="Number of targets">
+      <div class="bign" id="nval">4</div>
+    </div>
+    <div class="rank" id="ranklist"></div>
+    <div class="locked" id="lockedlist"></div>
+  </details>
+
+  <details class="panel" data-key="chart" open>
+    <summary><h2>Power by pull size</h2></summary>
+    <p class="psub">Lines flatten where a spell hits its target cap.</p>
+    <div class="chartbox" id="chart"></div>
+    <div style="margin-top:8px">
+      <label class="chk"><input type="checkbox" id="extendchk"> Extend axis to the largest target cap</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </details>
+
+  <details class="panel" data-key="strip" open>
+    <summary><h2>Rotation strip</h2></summary>
+    <p class="psub">Best three spells at each pull size — read it like a hotbar.</p>
+    <div class="stripwrap" id="strip"></div>
+  </details>
+
+  <details class="panel" data-key="gems">
+    <summary><h2>Greater Gems &mdash; base damage</h2></summary>
     <p class="psub">Up to 4 Greater Gems, each with a base-damage Supreme mod. Each gem adds a percentage of the spell&rsquo;s base power.</p>
     <div id="gemcontrols"></div>
     <div class="subhead" id="gemrankhead">Best gem to add</div>
@@ -124,41 +156,12 @@
     <div class="chartbox" id="gemcmpchart"></div>
     <div class="verdict" id="gemverdict"></div>
     <div class="gemnote">Gains are extra damage per cast of that spell, on top of your Wheel, stage, shield and slotted gems. They don&rsquo;t account for cooldowns, mana, or how often you cast it. To judge replacing a slotted gem, set that slot to empty first.</div>
-  </section>
+  </details>
 
-  <section class="panel">
-    <details class="editor" id="editor-details">
-      <summary>Edit spells &amp; values</summary>
-      <div id="editor"></div>
-    </details>
-  </section>
-
-  <section class="panel">
-    <h2 id="ranktitle">Priority</h2>
-    <p class="psub" id="ranksub"></p>
-    <div class="sliderrow">
-      <input type="range" id="nslider" min="1" max="15" value="4" aria-label="Number of targets">
-      <div class="bign" id="nval">4</div>
-    </div>
-    <div class="rank" id="ranklist"></div>
-    <div class="locked" id="lockedlist"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Power by pull size</h2>
-    <p class="psub">Lines flatten where a spell hits its target cap.</p>
-    <div class="chartbox" id="chart"></div>
-    <div style="margin-top:8px">
-      <label class="chk"><input type="checkbox" id="extendchk"> Extend axis to the largest target cap</label>
-    </div>
-    <div class="legend" id="legend"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Rotation strip</h2>
-    <p class="psub">Best three spells at each pull size — read it like a hotbar.</p>
-    <div class="stripwrap" id="strip"></div>
-  </section>
+  <details class="panel" data-key="editor" id="editor-details">
+    <summary><h2>Edit spells &amp; values</h2></summary>
+    <div id="editor"></div>
+  </details>
 
   <footer>
     Assumes below-30% targets are among those hit, and (for leech) that your primary target is one of them when possible.
@@ -211,18 +214,26 @@ const fmt = (v) => String(Math.round(v*10)/10);
 
 let state = {
   charLevel: 150, stage: 2, below: 1, metric: "total", n: 4, extend: false,
-  usingShield: true,
+  usingShield: false,
   gear: { mode: "gear", weaponAtk: 52, meleeSkill: 120, shieldDef: 38, shieldSkill: 120, manual: 1 },
   wheel: {}, spells: deep(DEFAULT_SPELLS),
   gems: Array.from({length:GEM_SLOTS}, () => ({ spell:"", grade:4 })),
   gemStack: "add",   // CipSoft: augment % is "based on the respective base damage" -> assume bonuses add
   cmp: { a:"fb", b:"fs", grade:4 },
+  open: {},          // panel open/closed, by data-key
 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY));
   if (saved && Array.isArray(saved.spells) && saved.spells.length) state = Object.assign(state, saved);
 } catch (e) { /* private browsing or blocked storage — run without persistence */ }
 
+function initPanels(){
+  document.querySelectorAll("details.panel[data-key]").forEach(d => {
+    const saved = state.open && state.open[d.dataset.key];
+    if (typeof saved === "boolean") d.open = saved;
+    d.addEventListener("toggle", () => { state.open = Object.assign({}, state.open, { [d.dataset.key]: d.open }); save(); });
+  });
+}
 function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){} }
 
 /* ---------------- model ---------------- */
@@ -694,7 +705,7 @@ document.getElementById("extendchk").addEventListener("change", (ev) => {
 });
 
 /* ---------------- boot ---------------- */
-refreshControls(); refreshGemControls(); refreshEditor(); syncSlider(); refreshViews();
+refreshControls(); refreshGemControls(); refreshEditor(); syncSlider(); refreshViews(); initPanels();
 </script>
 </body>
 </html>
