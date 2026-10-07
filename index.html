@@ -83,6 +83,16 @@
   .editrow-actions{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
   .stagegrid{ display:grid; grid-template-columns:auto repeat(3, minmax(70px,110px)); gap:6px 10px; margin-top:14px; align-items:center; font-size:12px; }
   .stagegrid .sl{ color:var(--faint); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; }
+  .gemslots{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+  .gemslot{ background:var(--inset); border:1px solid var(--line); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .gemslot .grouplabel{ margin:0; }
+  select{ background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:5px; padding:6px 7px; font-family:inherit; font-size:13px; width:100%; }
+  .seg.small button{ padding:4px 9px; font-size:12px; }
+  .cmpbox{ display:flex; flex-wrap:wrap; gap:14px 24px; align-items:flex-end; margin-bottom:10px; }
+  .cmpbox > div{ min-width:160px; }
+  .verdict{ font-size:13px; line-height:1.6; margin-top:10px; }
+  .gemnote{ font-size:11.5px; color:var(--faint); margin-top:10px; }
+  .subhead{ margin:18px 0 8px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); font-weight:700; }
   footer{ font-size:11px; color:var(--faint); padding:0 2px; }
   .editscroll{ overflow-x:auto; }
   button:focus-visible, input:focus-visible, summary:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
@@ -101,6 +111,19 @@
     <h2>Setup</h2>
     <p class="psub">Spells above your character level are hidden from all views.</p>
     <div id="controls"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Greater Gems &mdash; base damage</h2>
+    <p class="psub">Up to 4 Greater Gems, each with a base-damage Supreme mod. Each gem adds a percentage of the spell&rsquo;s base power.</p>
+    <div id="gemcontrols"></div>
+    <div class="subhead" id="gemrankhead">Best gem to add</div>
+    <div class="rank" id="gemrank"></div>
+    <div class="subhead">Compare two gems</div>
+    <div id="gemcmpcontrols"></div>
+    <div class="chartbox" id="gemcmpchart"></div>
+    <div class="verdict" id="gemverdict"></div>
+    <div class="gemnote">Gains are extra damage per cast of that spell, on top of your Wheel, stage, shield and slotted gems. They don&rsquo;t account for cooldowns, mana, or how often you cast it. To judge replacing a slotted gem, set that slot to empty first.</div>
   </section>
 
   <section class="panel">
@@ -141,7 +164,7 @@
     Assumes below-30% targets are among those hit, and (for leech) that your primary target is one of them when possible.
     Shield-based spells (Shield Bash, Shield Slam) are scaled by (shield Def &times; skill) &divide; (weapon Atk &times; melee skill) —
     an estimate, since CipSoft hasn't published the exact formula; use “Measured &times;” to calibrate against real in-game hits.
-    Their 50% reduction of the target's next auto attack isn't modeled. Your edits are saved in this browser.
+    Their 50% reduction of the target's next auto attack isn't modeled. Gem bonuses use the Supreme mod values from TibiaWiki. Your edits are saved in this browser.
   </footer>
 </div>
 
@@ -170,6 +193,13 @@ const DEFAULT_SPELLS = [
   { id:"sb", name:"Shield Bash",    words:"exori ico scu",  abbr:"SB", color:"#e88bc4", base:55,  cap:1,  minLevel:18, scaling:"shield" },
   { id:"ss", name:"Shield Slam",    words:"exori scu",      abbr:"SS", color:"#c9d16b", base:52,  cap:8,  minLevel:30, scaling:"shield" },
 ];
+/* Knight base-damage Supreme mods on Greater Gems, % of base power at Grade I-IV (TibiaWiki "Supreme Mod").
+   Keyed by spell id. Shield spells have none. */
+const GEM_BASE = {
+  an:[12,13.2,14.4,18], fs:[8,8.8,9.6,12], et:[6,6.6,7.2,9],
+  gs:[6.5,7.15,7.8,9.75], bs:[5,5.5,6,7.5], fb:[5,5.5,6,7.5],
+};
+const GEM_SLOTS = 4;
 const LEECH_SECONDARY = 0.10;
 const PALETTE = ["#e0564f","#b07fe8","#f2933a","#4fc8b8","#7fbf5a","#6fa8dc","#e88bc4","#c9d16b","#8fd0f0","#d98d5f","#a4e0a0","#e0c060"];
 const STORE_KEY = "tibia-knight-priority-v3";
@@ -184,6 +214,9 @@ let state = {
   usingShield: true,
   gear: { mode: "gear", weaponAtk: 52, meleeSkill: 120, shieldDef: 38, shieldSkill: 120, manual: 1 },
   wheel: {}, spells: deep(DEFAULT_SPELLS),
+  gems: Array.from({length:GEM_SLOTS}, () => ({ spell:"", grade:4 })),
+  gemStack: "add",   // CipSoft: augment % is "based on the respective base damage" -> assume bonuses add
+  cmp: { a:"fb", b:"fs", grade:4 },
 };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -213,12 +246,22 @@ function maxCap(){
 }
 function chartMaxN(){ return state.extend ? Math.max(15, maxCap()) : 15; }
 
-function computeAll(n){
+function gemFractions(id, gems){
+  const t = GEM_BASE[id];
+  return t ? gems.filter(g => g.spell === id).map(g => t[Math.min(4, Math.max(1, +g.grade||4)) - 1] / 100) : [];
+}
+// Wheel bonus and gem bonuses all scale the spell's base power. Default: they add.
+function powerMult(wheel, gemFracs){
+  if (state.gemStack === "mult") return gemFracs.reduce((m, g) => m * (1 + g), 1 + wheel);
+  return 1 + wheel + gemFracs.reduce((a, g) => a + g, 0);
+}
+function computeAll(n, extraGems){
+  const gems = extraGems ? state.gems.concat(extraGems) : state.gems;
   return activeSpells().map(s => {
     const w = state.wheel[s.id] || {};
     let base = +s.base || 0;
     if (s.scaling === "shield") base *= shieldMult();
-    if (s.wheelBoost && w.power) base *= 1 + (+s.wheelBoost);
+    base *= powerMult((s.wheelBoost && w.power) ? +s.wheelBoost : 0, gemFractions(s.id, gems));
     if (s.stages){
       const st = s.stages[Math.min(state.stage, s.stages.length) - 1];
       const hits = Math.min(n, +st.cap || 1);
@@ -307,6 +350,109 @@ function manualInputHtml(){
   return '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;max-width:280px">Shield \u00f7 melee damage ratio' +
     '<input type="number" step="any" min="0" style="width:76px" value="'+(+state.gear.manual)+'" data-action="gear" data-field="manual"></label>' +
     '<div style="font-size:11px;color:var(--faint);margin-top:6px;max-width:280px">Measure in-game: average Shield Bash hit \u00f7 average hit of a melee spell with the same base power ratio \u2014 or just tune until the numbers match what you see.</div>';
+}
+
+/* ---------------- greater gems ---------------- */
+const ROMAN = ["I","II","III","IV"];
+function gemSpellOptions(sel, allowEmpty){
+  const opts = state.spells.filter(s => GEM_BASE[s.id]);
+  return (allowEmpty ? '<option value="">\u2014 empty \u2014</option>' : "") +
+    opts.map(s => '<option value="'+esc(s.id)+'"'+(sel===s.id?" selected":"")+'>'+esc(s.name)+'</option>').join("");
+}
+function gradeSeg(action, slot, cur){
+  return '<div class="seg small">' + [1,2,3,4].map(g =>
+    '<button data-action="'+action+'" '+(slot!==null?'data-slot="'+slot+'" ':"")+'data-val="'+g+'" class="'+(+cur===g?"on":"")+'">'+ROMAN[g-1]+'</button>').join("") + '</div>';
+}
+function refreshGemControls(){
+  document.getElementById("gemcontrols").innerHTML =
+    '<div class="gemslots">' + state.gems.map((g,i) =>
+      '<div class="gemslot"><div class="grouplabel">Gem '+(i+1)+'</div>' +
+      '<select data-action="gemspell" data-slot="'+i+'" aria-label="Gem '+(i+1)+' spell">'+gemSpellOptions(g.spell,true)+'</select>' +
+      '<div style="display:flex;align-items:center;gap:8px"><span class="grouplabel">Grade</span>'+gradeSeg("gemgrade", i, g.grade)+'</div></div>'
+    ).join("") + '</div>' +
+    '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center"><span class="grouplabel" style="margin:0">Bonuses with Wheel</span>' +
+    '<div class="seg small"><button data-action="gemstack" data-val="add" class="'+(state.gemStack==="add"?"on":"")+'">Add</button>' +
+    '<button data-action="gemstack" data-val="mult" class="'+(state.gemStack==="mult"?"on":"")+'">Multiply</button></div>' +
+    '<span style="font-size:11.5px;color:var(--faint)">Add is the best reading of CipSoft\u2019s wording; not confirmed in-game.</span></div>';
+  document.getElementById("gemcmpcontrols").innerHTML =
+    '<div class="cmpbox">' +
+      '<div><div class="grouplabel">Gem A</div><select data-action="cmp" data-field="a">'+gemSpellOptions(state.cmp.a,false)+'</select></div>' +
+      '<div><div class="grouplabel">Gem B</div><select data-action="cmp" data-field="b">'+gemSpellOptions(state.cmp.b,false)+'</select></div>' +
+      '<div><div class="grouplabel">Grade (both)</div>'+gradeSeg("cmpgrade", null, state.cmp.grade)+'</div>' +
+    '</div>';
+}
+function gemGain(id, grade, n){
+  const key = state.metric;
+  const before = computeAll(n).find(r => r.id === id);
+  const after = computeAll(n, [{ spell:id, grade }]).find(r => r.id === id);
+  return before && after ? after[key] - before[key] : null;
+}
+function spellName(id){ const s = state.spells.find(x => x.id === id); return s ? s.name : id; }
+function spellColor(id){ const s = state.spells.find(x => x.id === id); return s ? s.color : "#999"; }
+
+function refreshGemOut(){
+  const n = state.n, grade = state.cmp.grade;
+  const filled = state.gems.filter(g => g.spell).length;
+  document.getElementById("gemrankhead").textContent = "Best gem to add at " + n + " target" + (n>1?"s":"") + " (Grade " + ROMAN[grade-1] + ")";
+  const rows = Object.keys(GEM_BASE).map(id => ({ id, gain: gemGain(id, grade, n) }))
+    .filter(r => r.gain !== null).sort((a,b) => b.gain - a.gain);
+  const max = rows.length ? (rows[0].gain || 1) : 1;
+  document.getElementById("gemrank").innerHTML = (filled >= GEM_SLOTS
+    ? '<div style="font-size:12px;color:var(--faint)">All '+GEM_SLOTS+' slots are filled \u2014 this shows what one more of each would add.</div>' : "") +
+    (rows.map((r,i) => '<div class="rrow"><div class="top"><span class="rname"><span class="idx">'+(i+1)+'</span>' +
+      '<strong style="color:'+esc(spellColor(r.id))+'">'+esc(spellName(r.id))+'</strong>' +
+      '<span class="meta"> \u00b7 +'+GEM_BASE[r.id][grade-1]+'% base</span></span>' +
+      '<span class="rval">+'+fmt(r.gain)+'</span></div>' +
+      '<div class="bar"><div style="width:'+Math.max(0,(r.gain/max)*100)+'%;background:'+esc(spellColor(r.id))+'"></div></div></div>').join("")
+     || '<span style="color:var(--faint);font-size:13px">No gem-eligible spells are castable at this level.</span>');
+
+  refreshGemCompare();
+}
+
+function refreshGemCompare(){
+  const { a, b, grade } = state.cmp;
+  const maxN = 15, ga = [], gb = [];
+  for (let n=1; n<=maxN; n++){ ga.push(gemGain(a, grade, n)); gb.push(gemGain(b, grade, n)); }
+  const chart = document.getElementById("gemcmpchart"), verdict = document.getElementById("gemverdict");
+  if (ga[0] === null || gb[0] === null){
+    chart.innerHTML = "";
+    verdict.textContent = "One of these spells is hidden at your level or setup, so there\u2019s nothing to compare.";
+    return;
+  }
+  const yMax = Math.max(1, ...ga, ...gb), p = Math.pow(10, Math.floor(Math.log10(yMax))), niceMax = Math.ceil(yMax/(p/2))*(p/2);
+  const W=720, H=220, mL=46, mR=12, mT=10, mB=26, iw=W-mL-mR, ih=H-mT-mB;
+  const X = n => mL + (n-1)/(maxN-1)*iw, Y = v => mT + ih - (v/niceMax)*ih;
+  let g = "";
+  for (let i=0;i<=4;i++){ const v=niceMax*i/4, y=Y(v);
+    g += '<line x1="'+mL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="var(--line)" stroke-dasharray="2 4"/>' +
+         '<text x="'+(mL-6)+'" y="'+(y+3.5)+'" text-anchor="end" font-size="10" fill="var(--dim)">'+fmt(v)+'</text>'; }
+  for (let n=1;n<=maxN;n+=2) g += '<text x="'+X(n)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="var(--dim)">'+n+'</text>';
+  const cx = X(Math.min(Math.max(state.n,1), maxN));
+  g += '<line x1="'+cx+'" y1="'+mT+'" x2="'+cx+'" y2="'+(mT+ih)+'" stroke="var(--gold)" stroke-opacity="0.35" stroke-width="1.5"/>';
+  [[a,ga],[b,gb]].forEach(([id,vals], k) => {
+    const d = vals.map((v,i)=>(i===0?"M":"L")+X(i+1).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
+    g += '<path d="'+d+'" fill="none" stroke="'+esc(spellColor(id))+'" stroke-width="2.4"'+(k===1 && a===b ? ' stroke-dasharray="5 4"':"")+'/>';
+  });
+  chart.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Extra damage from each gem by number of targets">'+g+'</svg>' +
+    '<div class="legend"><span><b style="color:'+esc(spellColor(a))+'">\u2501</b> '+esc(spellName(a))+'</span><span><b style="color:'+esc(spellColor(b))+'">\u2501</b> '+esc(spellName(b))+'</span><span>vertical line = your pull size</span></div>';
+
+  if (a === b){ verdict.textContent = "Both sides are the same gem."; return; }
+  // winner per pull size, collapsed into ranges
+  const eps = 1e-9, win = ga.map((v,i) => Math.abs(v-gb[i]) < eps ? "tie" : (v > gb[i] ? a : b));
+  const parts = []; let start = 0;
+  for (let i=1;i<=maxN;i++){
+    if (i===maxN || win[i] !== win[start]){
+      const lbl = start+1 === i ? ""+i : (start+1)+"\u2013"+i;
+      parts.push((win[start]==="tie" ? "tie" : esc(spellName(win[start]))) + " at " + lbl);
+      start = i;
+    }
+  }
+  const na = state.n, i0 = Math.min(Math.max(na,1),maxN) - 1;
+  const diff = ga[i0] - gb[i0];
+  verdict.innerHTML = '<strong>At '+na+' target'+(na>1?"s":"")+': </strong>' +
+    (Math.abs(diff) < eps ? "dead even." :
+      '<span style="color:'+esc(spellColor(diff>0?a:b))+';font-weight:700">'+esc(spellName(diff>0?a:b))+'</span> gains <strong>'+fmt(Math.abs(diff))+'</strong> more per cast ('+fmt(ga[i0])+' vs '+fmt(gb[i0])+').') +
+    '<br><span style="color:var(--dim)">Better gem by pull size: '+parts.join(", ")+'.</span>';
 }
 
 /* ---------------- ranked list ---------------- */
@@ -439,8 +585,8 @@ function refreshEditor(){
     '<p style="font-size:11px;color:var(--faint);margin:10px 0 0">Changes apply instantly and are saved in this browser. Base powers here are relative units from the spell formulas \u2014 only their ratios matter for priority.</p>';
 }
 
-function refreshViews(){ refreshRank(); refreshChart(); refreshStrip(); }
-function refreshAll(){ refreshControls(); refreshEditor(); syncSlider(); refreshViews(); save(); }
+function refreshViews(){ refreshRank(); refreshChart(); refreshStrip(); refreshGemOut(); }
+function refreshAll(){ refreshControls(); refreshGemControls(); refreshEditor(); syncSlider(); refreshViews(); save(); }
 function syncSlider(){
   const sl = document.getElementById("nslider");
   sl.max = chartMaxN();
@@ -457,6 +603,15 @@ document.addEventListener("click", (ev) => {
     const key = t.dataset.key;
     state[key] = (key === "metric") ? t.dataset.val : +t.dataset.val;
     refreshControls(); refreshViews(); save();
+  } else if (a === "gemgrade"){
+    state.gems[+t.dataset.slot].grade = +t.dataset.val;
+    refreshGemControls(); refreshViews(); save();
+  } else if (a === "gemstack"){
+    state.gemStack = t.dataset.val;
+    refreshGemControls(); refreshViews(); save();
+  } else if (a === "cmpgrade"){
+    state.cmp.grade = +t.dataset.val;
+    refreshGemControls(); refreshViews(); save();
   } else if (a === "gearmode"){
     state.gear.mode = t.dataset.val;
     refreshControls(); refreshViews(); save();
@@ -465,6 +620,7 @@ document.addEventListener("click", (ev) => {
     if (s && confirm('Remove "'+s.name+'" from the tool?')){
       state.spells = state.spells.filter(x => x.id !== t.dataset.id);
       delete state.wheel[t.dataset.id];
+      state.gems.forEach(g => { if (g.spell === t.dataset.id) g.spell = ""; });
       refreshAll();
     }
   } else if (a === "add"){
@@ -485,7 +641,13 @@ document.addEventListener("change", (ev) => {
   const t = ev.target.closest("[data-action]");
   if (!t) return;
   const a = t.dataset.action;
-  if (a === "wheel"){
+  if (a === "gemspell"){
+    state.gems[+t.dataset.slot].spell = t.value;
+    refreshViews(); save();
+  } else if (a === "cmp"){
+    state.cmp[t.dataset.field] = t.value;
+    refreshViews(); save();
+  } else if (a === "wheel"){
     const id = t.dataset.id, kind = t.dataset.kind;
     state.wheel[id] = state.wheel[id] || {};
     state.wheel[id][kind] = t.checked;
@@ -524,7 +686,7 @@ document.addEventListener("change", (ev) => {
 
 document.getElementById("nslider").addEventListener("input", (ev) => {
   state.n = +ev.target.value;
-  refreshRank(); refreshChart(); save();
+  refreshRank(); refreshChart(); refreshGemOut(); save();
 });
 document.getElementById("extendchk").addEventListener("change", (ev) => {
   state.extend = ev.target.checked;
@@ -532,7 +694,7 @@ document.getElementById("extendchk").addEventListener("change", (ev) => {
 });
 
 /* ---------------- boot ---------------- */
-refreshControls(); refreshEditor(); syncSlider(); refreshViews();
+refreshControls(); refreshGemControls(); refreshEditor(); syncSlider(); refreshViews();
 </script>
 </body>
 </html>
